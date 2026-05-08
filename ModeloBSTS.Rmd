@@ -1,4 +1,141 @@
 ---
-title: "ModeloBSTS"
+title: "BSTS - Goles en la Premier League"
+author: "Samuel Gantiva, Carlos Guiza, Samuel Emperador, Sara Albarracín"
 output: word_document
 ---
+# BSTS
+Bayesian Structural Time Series aplicado a los goles promedio de local y visitante
+en la Premier League (1993/94 - 2024/25)
+
+# Carga de Paquetes
+```{r}
+#install.packages("bsts")
+library(bsts)
+```
+
+# Lectura y preparación de datos
+```{r}
+# Lectura del dataset de la Premier League
+library(readr)
+Base_raw <- read_csv("C:/Users/samjg/Downloads/archive/England CSV.csv")
+
+# Conteo de partidos por temporada para detectar temporadas incompletas.
+# La PL moderna juega 380 partidos por temporada (1993/94 y 1994/95 fueron 462).
+# Una temporada con < 300 partidos se considera en curso (incompleta).
+partidos_x_temp <- aggregate(FTH.Goals ~ Season, data = Base_raw, FUN = length)
+colnames(partidos_x_temp)[2] <- "n_partidos"
+partidos_x_temp$completa <- partidos_x_temp$n_partidos >= 300
+print(partidos_x_temp)
+
+# Se construyen las dos series solo con temporadas completas
+temps_completas <- partidos_x_temp$Season[partidos_x_temp$completa]
+Base_completa <- Base_raw[Base_raw$Season %in% temps_completas, ]
+
+agg_local     <- aggregate(FTH.Goals ~ Season, data = Base_completa, FUN = mean)
+agg_visitante <- aggregate(FTA.Goals ~ Season, data = Base_completa, FUN = mean)
+agg_local     <- agg_local[order(agg_local$Season),]
+agg_visitante <- agg_visitante[order(agg_visitante$Season),]
+
+# Series finales para el modelo (31 observaciones cada una)
+goles_local     <- agg_local$FTH.Goals
+goles_visitante <- agg_visitante$FTA.Goals
+
+# Promedios parciales de la temporada 2024/25 (en curso) para sanity check posterior
+parcial_local      <- mean(Base_raw$FTH.Goals[Base_raw$Season == "2024/25"])
+parcial_visitante  <- mean(Base_raw$FTA.Goals[Base_raw$Season == "2024/25"])
+n_partidos_parcial <- sum(Base_raw$Season == "2024/25")
+n_partidos_total   <- 380   # PL moderna: 20 equipos x 38 jornadas
+
+cat("Partidos jugados de 2024/25:", n_partidos_parcial, "/", n_partidos_total, "\n")
+cat("Promedio parcial local:    ", round(parcial_local, 3), "\n")
+cat("Promedio parcial visitante:", round(parcial_visitante, 3), "\n")
+```
+
+# Serie 1: Goles promedio de LOCAL por temporada
+```{r}
+base1 <- data.frame(goles_local = goles_local)
+n_test <- 3   # da 3 puntos de prueba con la misma lógica # Número de valores para probar el modelo, en series de tiempo se recomienda usar desde 0 hasta n/4 de los datos
+base1$goles_local <- as.numeric(base1$goles_local)
+X <- as.numeric(length(base1$goles_local)) - n_test
+X1 <- X + n_test 
+Base1     <- base1[-c(X:X1), , drop = FALSE] # Base para entrenamiento del modelo (drop=FALSE evita colapso a vector con 1 sola columna)
+d_prueba  <- base1[c(X:X1),  , drop = FALSE] # Base para prueba del modelo
+ss1 <- AddLocalLinearTrend(list(), log(Base1$goles_local)) # tendencia local lineal: capta el ascenso secular de los goles
+# Se omite AddSeasonal: con datos anuales no existe ciclo intra-año significativo
+model1 <- bsts(log(Base1$goles_local), state.specification = ss1, niter = 5000) # Número de iteraciones varía entre 10 y 10 millones, aumentando de 10 en 10
+pred1 <- predict(model1, horizon = n_test+1, burn = SuggestBurn(0.1, model1)) # SuggestBurn descarta el 10% inicial de iteraciones (regla estándar del paquete bsts)
+obs <- log(d_prueba$goles_local)
+pronosticos <- pred1$median #Pronóstico por mediana
+obs;pronosticos
+obs_real <- d_prueba$goles_local
+pred_real <- exp(pronosticos)
+MAPE <- 100*(mean(abs(pred_real - obs_real)/obs_real)); MAPE
+```
+```{r}
+ss1 <- AddLocalLinearTrend(list(), log(goles_local))
+model_local <- bsts(log(goles_local), state.specification = ss1, niter = 5000) # Num de iteraciones que varia entre 10 y 10 millones, aumentando de 10 en 10
+pred_local <- predict(model_local, horizon = 6, burn = SuggestBurn(0.1, model_local)) # horizon = 6: temporadas 2024/25 a 2029/30
+pronostico_local <- exp(pred_local$median)
+names(pronostico_local) <- c("2024/25","2025/26","2026/27","2027/28","2028/29","2029/30")
+round(pronostico_local, 3)
+
+# Comparación con la temporada 2024/25 parcial: ¿qué tendrían que promediar los partidos restantes?
+restante_local <- (n_partidos_total*pronostico_local["2024/25"] - n_partidos_parcial*parcial_local) / (n_partidos_total - n_partidos_parcial)
+cat("Predicción 2024/25 completa:  ", round(pronostico_local["2024/25"], 3), "\n")
+cat("Promedio parcial 2024/25:     ", round(parcial_local, 3), " (", n_partidos_parcial, "partidos)\n")
+cat("Implícito en partidos restantes:", round(restante_local, 3), " (", n_partidos_total - n_partidos_parcial, "partidos)\n")
+```
+
+# Serie 2: Goles promedio de VISITANTE por temporada
+```{r}
+base1 <- data.frame(goles_visitante = goles_visitante)
+n_test <- 3 # Número de valores para probar el modelo, en series de tiempo se recomienda usar desde 0 hasta n/4 de los datos
+base1$goles_visitante <- as.numeric(base1$goles_visitante)
+X <- as.numeric(length(base1$goles_visitante)) - n_test
+X1 <- X + n_test 
+Base1     <- base1[-c(X:X1), , drop = FALSE] # Base para entrenamiento del modelo
+d_prueba  <- base1[c(X:X1),  , drop = FALSE] # Base para prueba del modelo
+ss1 <- AddLocalLinearTrend(list(), log(Base1$goles_visitante)) # tendencia local lineal en lugar de nivel local
+model1 <- bsts(log(Base1$goles_visitante), state.specification = ss1, niter = 5000) # Número de iteraciones varía entre 10 y 10 millones, aumentando de 10 en 10
+pred1 <- predict(model1, horizon = n_test+1, burn = SuggestBurn(0.1, model1)) # SuggestBurn descarta el 10% inicial de iteraciones
+obs <- log(d_prueba$goles_visitante)
+pronosticos <- pred1$median #Pronóstico por mediana
+obs_real <- d_prueba$goles_visitante
+pred_real <- exp(pronosticos)
+MAPE <- 100*(mean(abs(pred_real - obs_real)/obs_real)); MAPE
+```
+```{r}
+ss1 <- AddLocalLinearTrend(list(), log(goles_visitante))
+model_visitante <- bsts(log(goles_visitante), state.specification = ss1, niter = 5000) # Num de iteraciones que varia entre 10 y 10 millones, aumentando de 10 en 10
+pred_visitante <- predict(model_visitante, horizon = 6, burn = SuggestBurn(0.1, model_visitante)) # horizon = 6: temporadas 2024/25 a 2029/30
+pronostico_visitante <- exp(pred_visitante$median)
+names(pronostico_visitante) <- c("2024/25","2025/26","2026/27","2027/28","2028/29","2029/30")
+round(pronostico_visitante, 3)
+
+restante_visitante <- (n_partidos_total*pronostico_visitante["2024/25"] - n_partidos_parcial*parcial_visitante) / (n_partidos_total - n_partidos_parcial)
+cat("Predicción 2024/25 completa:  ", round(pronostico_visitante["2024/25"], 3), "\n")
+cat("Promedio parcial 2024/25:     ", round(parcial_visitante, 3), " (", n_partidos_parcial, "partidos)\n")
+cat("Implícito en partidos restantes:", round(restante_visitante, 3), " (", n_partidos_total - n_partidos_parcial, "partidos)\n")
+```
+
+# Comparación: ¿están convergiendo los goles de local y visitante?
+```{r}
+brecha_2023_24 <- goles_local[length(goles_local)] - goles_visitante[length(goles_visitante)]
+brecha_2029_30 <- pronostico_local["2029/30"] - pronostico_visitante["2029/30"]
+cat("Brecha (local - visitante) en 2023/24:", round(brecha_2023_24, 3), "\n")
+cat("Brecha pronosticada en 2029/30:       ", round(brecha_2029_30, 3), "\n")
+
+# Gráfico: serie histórica + pronóstico para ambas series
+anios_hist <- 1993:2023  # 31 temporadas completas (1993/94 a 2023/24)
+anios_pred <- 2024:2029  # 6 temporadas pronosticadas (2024/25 a 2029/30)
+plot(anios_hist, goles_local, type="b", col="blue", pch=16,
+     xlim=c(1993, 2030), ylim=c(0.9, 2.1),
+     xlab="Año de inicio de la temporada", ylab="Goles promedio por partido",
+     main="Goles en la Premier League: histórico y pronóstico BSTS")
+lines(anios_hist, goles_visitante, type="b", col="red", pch=16)
+lines(anios_pred, pronostico_local,     type="b", col="blue", lty=2, pch=1)
+lines(anios_pred, pronostico_visitante, type="b", col="red",  lty=2, pch=1)
+abline(v=2023.5, lty=3, col="gray")
+legend("topleft", legend=c("Local hist.", "Visitante hist.", "Local pred.", "Visitante pred."),
+       col=c("blue","red","blue","red"), lty=c(1,1,2,2), pch=c(16,16,1,1), bty="n")
+```
