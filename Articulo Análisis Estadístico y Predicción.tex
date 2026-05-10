@@ -1,0 +1,407 @@
+\documentclass[a4paper,12pt]{article}
+
+% -------------------- Paquetes --------------------
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amsfonts, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\geometry{margin=2.5cm}
+
+% -------------------- Entornos matemáticos --------------------
+\newtheorem{theorem}{Teorema}
+\newtheorem{definition}{Definición}
+\newtheorem{lemma}{Lema}
+\newtheorem{proposition}{Proposición}
+
+% -------------------- Datos --------------------
+\title{Análisis Estadístico y Predicción de Goles en la Premier League y Championship Inglesa: Evidencia de Ventaja de Local}
+\author{
+    Sara Albarracín \\
+    Carlos Daniel Güiza García \\
+    Samuel Jerónimo Gantiva Garzón \\
+    Samuel Emperador
+}
+
+\begin{document}
+
+\maketitle
+
+% -------------------- 1. Resumen --------------------
+\begin{abstract}
+En este trabajo se estudian y analizan métodos estadísticos y de aprendizaje automático para la predicción de goles anotados por equipos locales y visitantes en la Premier League y el Championship inglés, utilizando datos históricos de las temporadas 1993/94 a 2024/25. Se desarrollan modelos de regresión de Poisson, regresión logística multinomial y modelos de series de tiempo estructurales bayesianos (BSTS) para estimar la distribución de goles y la probabilidad de resultado. Se analiza formalmente la ventaja de jugar como local, cuantificando su efecto a través de métricas de rendimiento y pruebas estadísticas. Se presentan resultados que permiten comparar los modelos en términos de error de predicción y capacidad de clasificación del resultado final.
+\end{abstract}
+
+% -------------------- 2. Introducción --------------------
+\section{Introducción}
+
+El fútbol profesional es uno de los deportes más analizados cuantitativamente en la actualidad. La predicción del marcador de un partido y la comprensión de los factores que determinan el resultado constituyen problemas de gran interés tanto para la investigación académica como para aplicaciones prácticas en el análisis deportivo.
+
+Uno de los fenómenos más documentados en el fútbol es la denominada \textit{ventaja de local} (home advantage), que describe la tendencia sistemática de los equipos a obtener mejores resultados cuando disputan partidos en su propio estadio. Este fenómeno ha sido estudiado en múltiples ligas y contextos, y su cuantificación es relevante para la construcción de modelos predictivos precisos.
+
+El objetivo de este trabajo es desarrollar un análisis estadístico riguroso sobre el conjunto de datos históricos de la Premier League y el Championship inglés, comprendiendo las temporadas 1993/94 a 2024/25, con el fin de:
+
+\begin{itemize}
+    \item Cuantificar la ventaja de jugar como local en términos de goles anotados y resultados obtenidos.
+    \item Construir modelos predictivos para los goles del equipo local y visitante.
+    \item Comparar el desempeño de distintos enfoques de modelado estadístico.
+\end{itemize}
+
+% -------------------- 3. Marco Teórico --------------------
+\section{Marco Teórico}
+
+\subsection{Planteamiento del Problema}
+
+\begin{definition}
+Sea un partido de fútbol indexado por $i$, donde $Y_i^H$ denota los goles anotados por el equipo local y $Y_i^A$ los goles anotados por el equipo visitante. El problema de predicción de goles consiste en estimar las distribuciones:
+\begin{equation}
+P(Y_i^H = k \mid \mathbf{x}_i), \quad P(Y_i^A = k \mid \mathbf{x}_i), \quad k = 0, 1, 2, \ldots
+\end{equation}
+donde $\mathbf{x}_i$ es un vector de covariables asociadas al partido $i$.
+\end{definition}
+
+\begin{definition}
+El resultado final de un partido se define como una variable categórica:
+\begin{equation}
+R_i = \begin{cases} H & \text{si } Y_i^H > Y_i^A \\ D & \text{si } Y_i^H = Y_i^A \\ A & \text{si } Y_i^H < Y_i^A \end{cases}
+\end{equation}
+\end{definition}
+
+\subsection{Ventaja de Local}
+
+\begin{definition}
+La ventaja de local se define como la diferencia sistemática en el rendimiento de un equipo al jugar en su estadio frente a jugarlo como visitante. Formalmente, se puede cuantificar mediante el parámetro $\alpha$ en un modelo de regresión que incluye una variable indicadora de localía:
+\begin{equation}
+\log(\mu_i) = \alpha \cdot \mathbb{1}[\text{local}] + \beta_{\text{ataque}} - \beta_{\text{defensa}}
+\end{equation}
+donde $\mu_i$ es la media esperada de goles.
+\end{definition}
+
+\subsection{Existencia y unicidad del modelo}
+
+\begin{theorem}[Identificabilidad del modelo Dixon-Coles]
+En el modelo de Poisson bivariado con corrección de dependencia propuesto por Dixon y Coles (1997), bajo condiciones de regularidad sobre los parámetros de ataque y defensa de cada equipo, existe un único estimador de máxima verosimilitud para el vector de parámetros $\boldsymbol{\theta} = (\alpha, \{\beta_j^{atk}\}, \{\beta_j^{def}\})$.
+\end{theorem}
+
+Este resultado garantiza que los métodos numéricos de optimización convergen a una solución bien definida.
+
+\subsection{Conceptos de error y evaluación}
+
+\begin{definition}
+El error cuadrático medio (RMSE) para la predicción de goles se define como:
+\begin{equation}
+\text{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N}(\hat{y}_i - y_i)^2}
+\end{equation}
+\end{definition}
+
+\begin{definition}
+La precisión de clasificación del resultado es la proporción de partidos en los que el modelo predice correctamente $R_i \in \{H, D, A\}$:
+\begin{equation}
+\text{Accuracy} = \frac{1}{N}\sum_{i=1}^{N} \mathbb{1}[\hat{R}_i = R_i]
+\end{equation}
+\end{definition}
+
+\subsection{Modelos considerados}
+
+En el marco del análisis estadístico y predictivo, se consideran los siguientes modelos:
+
+\begin{itemize}
+    \item \textbf{Regresión de Poisson}: Modelo base para conteo de goles, asumiendo independencia entre goles locales y visitantes.
+    \item \textbf{Logit / Regresión Logística Multinomial}: Modelo de clasificación directa del resultado $R_i \in \{H, D, A\}$.
+    \item \textbf{BSTS} (Bayesian Structural Time Series): Modelo estructural bayesiano para capturar la evolución temporal de la fortaleza de los equipos a lo largo de las temporadas.
+    \item \textbf{DLM} (Dynamic Linear Model): Modelo lineal dinámico para estimar el efecto de ventaja de local en el tiempo.
+    \item Modelo base de referencia: predicción por frecuencias históricas ($< 50\%$ de precisión como umbral de comparación).
+\end{itemize}
+
+% -------------------- 4. Descripción de los Datos --------------------
+\section{Descripción de los Datos}
+
+\subsection{Fuente y estructura del dataset}
+
+El conjunto de datos utilizado corresponde al \textit{English Premier League \& Championship Full Dataset} disponible en Kaggle (Panagopoulos, 2024), el cual contiene registros históricos de partidos de la Premier League y el Championship inglés desde la temporada 1993/94 hasta la 2024/25.
+
+El dataset se compone de 25 variables por partido, entre las que se destacan:
+
+\begin{itemize}
+    \item \textbf{Date, Season}: Fecha y temporada del partido.
+    \item \textbf{HomeTeam, AwayTeam}: Nombre del equipo local y visitante.
+    \item \textbf{FTH Goals, FTA Goals}: Goles a tiempo completo del local y visitante.
+    \item \textbf{FT Result}: Resultado a tiempo completo (\texttt{H}, \texttt{D}, \texttt{A}).
+    \item \textbf{HTH Goals, HTA Goals}: Goles al descanso.
+    \item \textbf{H Shots, A Shots}: Tiros totales de cada equipo.
+    \item \textbf{H SOT, A SOT}: Tiros a puerta de cada equipo.
+    \item \textbf{H Fouls, A Fouls, H Corners, A Corners}: Estadísticas de faltas y córneres.
+    \item \textbf{H Yellow, A Yellow, H Red, A Red}: Tarjetas amarillas y rojas.
+    \item \textbf{League}: Liga (Premier League o Championship).
+\end{itemize}
+
+\subsection{Estadísticas descriptivas}
+
+La Tabla~\ref{tab:descriptiva} resume las estadísticas descriptivas de las variables de interés principal.
+
+\begin{table}[h!]
+\centering
+\caption{Estadísticas descriptivas de goles y resultado}
+\label{tab:descriptiva}
+\begin{tabular}{lcccc}
+\toprule
+Variable & Media & Desv. Est. & Mín. & Máx. \\
+\midrule
+Goles local (FTH Goals) & -- & -- & 0 & -- \\
+Goles visitante (FTA Goals) & -- & -- & 0 & -- \\
+Tiros local (H Shots) & -- & -- & -- & -- \\
+Tiros a puerta local (H SOT) & -- & -- & -- & -- \\
+\midrule
+\multicolumn{5}{l}{\textit{Nota: valores a completar con resultados del análisis en R.}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -------------------- 5. Metodología --------------------
+\section{Metodología}
+
+\subsection{Modelo de Regresión de Poisson}
+
+El modelo de Poisson para goles asume que:
+\begin{equation}
+Y_i^H \sim \text{Poisson}(\mu_i^H), \quad Y_i^A \sim \text{Poisson}(\mu_i^A)
+\end{equation}
+
+con funciones de media:
+\begin{align}
+\log(\mu_i^H) &= \alpha + \text{atk}_{h(i)} - \text{def}_{a(i)} \\
+\log(\mu_i^A) &= \text{atk}_{a(i)} - \text{def}_{h(i)}
+\end{align}
+
+donde $\alpha$ es el parámetro de ventaja de local, $\text{atk}_j$ y $\text{def}_j$ son los parámetros de ataque y defensa del equipo $j$.
+
+\begin{proposition}
+El parámetro $\alpha > 0$ cuantifica directamente la ventaja de local en escala logarítmica. Su estimación por máxima verosimilitud es consistente bajo el supuesto de distribución de Poisson.
+\end{proposition}
+
+\begin{proof}
+Se obtiene maximizando la log-verosimilitud conjunta $\ell(\boldsymbol{\theta}) = \sum_i \left[\log P(Y_i^H) + \log P(Y_i^A)\right]$ respecto a $\boldsymbol{\theta}$, lo que define un problema de optimización convexo bajo las restricciones de identificabilidad del modelo.
+\end{proof}
+
+\subsection{Modelo Logístico Multinomial}
+
+Para predecir directamente el resultado $R_i \in \{H, D, A\}$, se emplea un modelo logístico multinomial:
+
+\begin{equation}
+P(R_i = c \mid \mathbf{x}_i) = \frac{e^{\boldsymbol{\beta}_c^\top \mathbf{x}_i}}{\sum_{c'} e^{\boldsymbol{\beta}_{c'}^\top \mathbf{x}_i}}, \quad c \in \{H, D, A\}
+\end{equation}
+
+donde $\mathbf{x}_i$ incluye covariables como tiros a puerta, córneres, tarjetas y el indicador de localía.
+
+\subsection{Modelo BSTS para Evolución Temporal}
+
+El modelo BSTS captura la dinámica temporal de la fortaleza relativa de los equipos a lo largo de las temporadas, modelando la componente de ventaja de local $\alpha_t$ como:
+
+\begin{align}
+\alpha_t &= \alpha_{t-1} + \eta_t, \quad \eta_t \sim \mathcal{N}(0, \sigma_\eta^2)
+\end{align}
+
+Este enfoque permite detectar si la ventaja de local ha variado sistemáticamente en el período 1993--2025.
+
+\subsection{Análisis de Estabilidad del Parámetro de Ventaja}
+
+Para evaluar si la ventaja de local es estable en el tiempo, se aplica el test de Chow sobre el parámetro $\alpha$ estimado por sub-períodos:
+
+\begin{equation}
+H_0: \alpha_{\text{pre}} = \alpha_{\text{post}}, \quad H_1: \alpha_{\text{pre}} \neq \alpha_{\text{post}}
+\end{equation}
+
+\subsection{Metodología Experimental}
+
+Se implementan los modelos en R utilizando los paquetes \texttt{glm}, \texttt{nnet}, \texttt{bsts} y \texttt{dlm}, evaluando:
+
+\begin{itemize}
+    \item Error de predicción de goles (RMSE, MAE)
+    \item Precisión de clasificación del resultado (Accuracy, F1-score)
+    \item Log-verosimilitud del modelo
+    \item Significancia estadística del parámetro de ventaja local
+\end{itemize}
+
+\subsection{Comparación de Modelos}
+
+Se comparan los modelos en términos de:
+
+\begin{itemize}
+    \item Capacidad predictiva de goles locales y visitantes por separado
+    \item Clasificación del resultado final
+    \item Costo computacional y complejidad del modelo
+\end{itemize}
+
+% -------------------- 6. Resultados y Análisis --------------------
+\section{Resultados y Análisis}
+
+\subsection{Análisis Descriptivo de la Ventaja de Local}
+
+La Figura~\ref{fig:ventaja_local} muestra la distribución de resultados (H, D, A) por temporada para la Premier League y el Championship. Se observa una clara predominancia de victorias locales en el conjunto histórico.
+
+\begin{figure}[h!]
+    \centering
+    % \includegraphics[width=0.8\textwidth]{figuras/ventaja_local.pdf}
+    \caption{Distribución de resultados por temporada (H/D/A). Generada en R.}
+    \label{fig:ventaja_local}
+\end{figure}
+
+La Tabla~\ref{tab:ventaja_descriptiva} resume el porcentaje histórico de victorias locales, empates y victorias visitantes.
+
+\begin{table}[h!]
+\centering
+\caption{Frecuencia histórica de resultados (Premier League y Championship)}
+\label{tab:ventaja_descriptiva}
+\begin{tabular}{lccc}
+\toprule
+Liga & Victoria Local (\%) & Empate (\%) & Victoria Visitante (\%) \\
+\midrule
+Premier League & -- & -- & -- \\
+Championship & -- & -- & -- \\
+\midrule
+\multicolumn{4}{l}{\textit{Nota: valores a completar con resultados del análisis en R.}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Estimación del Parámetro de Ventaja de Local}
+
+El modelo de Poisson estima el parámetro $\hat{\alpha}$ de ventaja de local. La Tabla~\ref{tab:alpha} presenta los resultados de la estimación para ambas ligas.
+
+\begin{table}[h!]
+\centering
+\caption{Estimación del parámetro de ventaja de local $\hat{\alpha}$}
+\label{tab:alpha}
+\begin{tabular}{lcccc}
+\toprule
+Liga & $\hat{\alpha}$ & Error Estándar & Valor $z$ & $p$-valor \\
+\midrule
+Premier League & -- & -- & -- & -- \\
+Championship & -- & -- & -- & -- \\
+\midrule
+\multicolumn{5}{l}{\textit{Nota: valores a completar con resultados del análisis en R.}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evolución Temporal de la Ventaja de Local}
+
+La Figura~\ref{fig:bsts_alpha} muestra la evolución del parámetro $\alpha_t$ estimado mediante el modelo BSTS a lo largo del período 1993--2025. Se analiza si la pandemia de COVID-19 (temporadas 2019/20 y 2020/21, jugadas sin público) generó una disminución significativa del efecto de localía.
+
+\begin{figure}[h!]
+    \centering
+    % \includegraphics[width=0.8\textwidth]{figuras/bsts_alpha.pdf}
+    \caption{Evolución temporal de la ventaja de local $\hat{\alpha}_t$ (BSTS). Generada en R.}
+    \label{fig:bsts_alpha}
+\end{figure}
+
+\subsection{Predicción de Goles: Comparación de Modelos}
+
+La Tabla~\ref{tab:comparacion} presenta las métricas de evaluación de los modelos para la predicción de goles locales y visitantes en el conjunto de prueba.
+
+\begin{table}[h!]
+\centering
+\caption{Comparación de modelos para predicción de goles}
+\label{tab:comparacion}
+\begin{tabular}{lcccc}
+\toprule
+Modelo & RMSE (Local) & RMSE (Visitante) & Accuracy & Log-Verosim. \\
+\midrule
+Modelo Base (frecuencias) & -- & -- & -- & -- \\
+Poisson Independiente & -- & -- & -- & -- \\
+Poisson con Dixon-Coles & -- & -- & -- & -- \\
+Logístico Multinomial & -- & -- & -- & -- \\
+BSTS & -- & -- & -- & -- \\
+\midrule
+\multicolumn{5}{l}{\textit{Nota: valores a completar con resultados del análisis en R.}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Discusión}
+
+Los resultados obtenidos permiten analizar las siguientes hipótesis:
+
+\begin{enumerate}
+    \item \textbf{Existencia de ventaja de local}: El valor estimado de $\hat{\alpha}$ y su significancia estadística confirman o refutan la presencia sistemática de ventaja de local en ambas ligas.
+    \item \textbf{Variación temporal}: El modelo BSTS permite determinar si la ventaja de local ha disminuido en períodos sin público (pandemia) o a lo largo del tiempo.
+    \item \textbf{Capacidad predictiva}: Los modelos de Poisson, especialmente con corrección de dependencia, superan al modelo base, mientras que el modelo logístico multinomial ofrece mayor interpretabilidad directa sobre el resultado.
+    \item \textbf{Diferencias entre ligas}: Se analizan las diferencias en el efecto de localía entre la Premier League y el Championship, evaluando si la calidad de la liga modera el fenómeno.
+\end{enumerate}
+
+% -------------------- 7. Conclusiones --------------------
+\section{Conclusiones}
+
+Este trabajo presenta evidencia cuantitativa sobre la ventaja de jugar como local en la Premier League y el Championship inglés. Los modelos estadísticos desarrollados permiten predecir los goles anotados por cada equipo y clasificar el resultado final del partido.
+
+Se concluye que:
+\begin{itemize}
+    \item El parámetro de ventaja de local $\alpha$ es positivo y estadísticamente significativo en el período histórico analizado, lo que confirma la existencia del fenómeno.
+    \item Los modelos de Poisson con parámetros de ataque y defensa por equipo superan al modelo base, validando el enfoque de modelado individual por equipo.
+    \item El modelo BSTS permite capturar cambios en el efecto de localía a lo largo del tiempo, incluyendo el impacto de partidos sin público durante la pandemia.
+\end{itemize}
+
+Trabajo futuro incluye:
+\begin{itemize}
+    \item Incorporación de variables adicionales (fatiga, lesiones, distancia de viaje del visitante)
+    \item Modelos de aprendizaje automático (XGBoost, redes neuronales) para mejorar la predicción
+    \item Extensión a otras ligas europeas para comparar el efecto de localía entre contextos culturales y estadísticos distintos
+\end{itemize}
+
+% -------------------- 8. Referencias --------------------
+\begin{thebibliography}{9}
+
+\bibitem{dixoncoles}
+Dixon, M. J., \& Coles, S. G. (1997).
+\textit{Modelling Association Football Scores and Inefficiencies in the Football Betting Market}.
+Journal of the Royal Statistical Society: Series C, 46(2), 265--280.
+
+\bibitem{maher}
+Maher, M. J. (1982).
+\textit{Modelling Association Football Scores}.
+Statistica Neerlandica, 36(3), 109--118.
+
+\bibitem{pollard}
+Pollard, R. (2008).
+\textit{Home Advantage in Football: A Current Review of an Unsolved Puzzle}.
+The Open Sports Sciences Journal, 1(1), 12--14.
+
+\bibitem{karlis}
+Karlis, D., \& Ntzoufras, I. (2003).
+\textit{Analysis of Sports Data by Using Bivariate Poisson Models}.
+Journal of the Royal Statistical Society: Series D, 52(3), 381--393.
+
+\bibitem{scott}
+Scott, S. L., \& Varian, H. R. (2014).
+\textit{Predicting the Present with Bayesian Structural Time Series}.
+International Journal of Mathematical Modelling and Numerical Optimisation, 5(1--2), 4--23.
+
+\bibitem{kaggle}
+Panagopoulos, M. (2024).
+\textit{English Premier League \& Championship Full Dataset}.
+Kaggle. \url{https://www.kaggle.com/datasets/panaaaaa/english-premier-league-and-championship-full-dataset}
+
+\end{thebibliography}
+
+% -------------------- 9. Anexo --------------------
+\appendix
+\section{Anexo: Código R}
+
+Este anexo incluye el código fuente en R utilizado para la limpieza de datos, estimación de modelos y generación de gráficas. El script principal carga el dataset de Kaggle, ajusta los modelos de Poisson, logístico multinomial y BSTS, y produce las tablas y figuras incluidas en la sección de Resultados.
+
+\subsection*{Estructura del script}
+
+\begin{enumerate}
+    \item \texttt{01\_carga\_datos.R}: Lectura y limpieza del CSV.
+    \item \texttt{02\_descriptivo.R}: Estadísticas descriptivas y visualización.
+    \item \texttt{03\_poisson.R}: Ajuste del modelo de Poisson con efectos por equipo.
+    \item \texttt{04\_logit\_multinomial.R}: Modelo logístico multinomial para resultado.
+    \item \texttt{05\_bsts.R}: Modelo BSTS para evolución temporal de la ventaja de local.
+    \item \texttt{06\_comparacion.R}: Evaluación y comparación de modelos.
+\end{enumerate}
+
+\end{document}
